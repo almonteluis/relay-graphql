@@ -7,47 +7,84 @@ import {
 import RelayEnvironment from "./RelayEnvironment";
 import { AppUserStatsQuery } from "./queries/AppUserStatsQuery";
 import type { AppUserStatsQuery as AppUserStatsQueryType } from "./__generated__/AppUserStatsQuery.graphql";
+import {
+  getGenderPercentages,
+  getAgeRangePercentages,
+  getLastNameLengthCounts,
+  getTop10StatePercentages,
+} from "./utils/userStats.ts";
+
 import "./App.css";
 const preloadedQuery = loadQuery<AppUserStatsQueryType>(
   RelayEnvironment,
   AppUserStatsQuery,
-  { count: 10, nat: "us" }
+  { count: 200, nat: "us" }
 );
 
-function UserStats({ preloadedQuery }) {
-  const data = usePreloadedQuery<AppUserStatsQueryType>(
-    AppUserStatsQuery,
-    preloadedQuery
+const defaultVariables = { count: 200, nat: "us" };
+
+function StatsDisplay({ users }: { users: any[] }) {
+  const genderStats = getGenderPercentages(users);
+  const ageStats = getAgeRangePercentages(users);
+  const nameLengthStats = getLastNameLengthCounts(users);
+  const topStates = getTop10StatePercentages(users);
+
+  const renderStat = (
+    title: string,
+    stats: Record<string | number, string | number>
+  ) => (
+    <div className="mb-4">
+      <h3 className="font-semibold mb-1">{title}</h3>
+      <ul className="text-sm text-gray-700 pl-4 list-disc">
+        {Object.entries(stats).map(([key, value]) => (
+          <li key={key}>
+            {key}: {value}%
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 
   return (
-    <div className="mt-6 space-y-4">
-      {data.users.map((user, index) => (
-        <div
-          key={index}
-          className="p-4 border rounded-lg shadow-sm bg-white flex justify-between items-center"
-        >
-          <div className="text-gray-700 font-medium">{user.name.last}</div>
-          <div className="text-sm text-gray-500">
-            Age: {user.dob.age} | State: {user.location.state} | {user.gender}
-          </div>
-        </div>
-      ))}
+    <div className="space-y-4">
+      {renderStat("Gender Percentages", genderStats)}
+      {renderStat("Age Range Percentages", ageStats)}
+      {renderStat("Top 10 States", topStates)}
+      {renderStat("Last Name Length Counts", nameLengthStats)}
     </div>
   );
 }
 
-function AppRoot() {
-  const [count, setCount] = useState(10);
-  const [nat, setNat] = useState("us");
-  const [queryRef, setQueryRef] = useState(() =>
-    loadQuery<AppUserStatsQueryType>(RelayEnvironment, AppUserStatsQuery, {
-      count: 10,
-      nat: "us",
-    })
+function StatsRoot({ preloadedQuery }: { preloadedQuery: any }) {
+  const data = usePreloadedQuery<AppUserStatsQueryType>(
+    AppUserStatsQuery,
+    preloadedQuery
   );
+  return <StatsDisplay users={data.users} />;
+}
 
-  const handleSubmit = () => {
+function AppRoot() {
+  const [count, setCount] = useState(defaultVariables.count);
+  const [nat, setNat] = useState(defaultVariables.nat);
+  const [queryRef, setQueryRef] = useState(() =>
+    loadQuery<AppUserStatsQueryType>(
+      RelayEnvironment,
+      AppUserStatsQuery,
+      defaultVariables
+    )
+  );
+  const [error, setError] = useState("");
+
+  const handleFetch = () => {
+    if (count < 1 || count > 5000) {
+      setError("Count must be between 1 and 5000");
+      return;
+    }
+    if (!/^[a-z]{2}$/i.test(nat)) {
+      setError("Nationality must be a two-letter code");
+      return;
+    }
+    setError("");
     const newQuery = loadQuery<AppUserStatsQueryType>(
       RelayEnvironment,
       AppUserStatsQuery,
@@ -61,47 +98,45 @@ function AppRoot() {
 
   return (
     <RelayEnvironmentProvider environment={RelayEnvironment}>
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-xl mx-auto bg-white shadow-md p-6 rounded-lg">
-          <h1 className="text-xl font-bold text-gray-800 mb-4">
-            Fetch User Stats
-          </h1>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-600">
-                Count
-              </label>
-              <input
-                type="number"
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-600">
-                Nationality (e.g. us, fr)
-              </label>
-              <input
-                type="text"
-                value={nat}
-                onChange={(e) => setNat(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              />
-            </div>
-            <button
-              onClick={handleSubmit}
-              className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md shadow hover:bg-blue-700 transition"
-            >
-              Fetch
-            </button>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <h1 className="text-xl font-bold mb-4">User Statistics Dashboard</h1>
+
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium">Number of Users</label>
+            <input
+              type="number"
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+              className="w-full mt-1 p-2 border rounded"
+            />
           </div>
-          <Suspense
-            fallback={<div className="mt-6 text-gray-500">Loading...</div>}
+
+          <div>
+            <label className="block text-sm font-medium">
+              Nationality (e.g. us, fr)
+            </label>
+            <input
+              type="text"
+              value={nat}
+              onChange={(e) => setNat(e.target.value)}
+              className="w-full mt-1 p-2 border rounded"
+            />
+          </div>
+
+          {error && <div className="text-red-600 text-sm">{error}</div>}
+
+          <button
+            onClick={handleFetch}
+            className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded shadow"
           >
-            <UserStats preloadedQuery={queryRef} />
-          </Suspense>
+            Fetch Users
+          </button>
         </div>
+
+        <Suspense fallback={<div>Loading stats...</div>}>
+          <StatsRoot preloadedQuery={queryRef} />
+        </Suspense>
       </div>
     </RelayEnvironmentProvider>
   );
